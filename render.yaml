@@ -15,4 +15,4 @@ services:
       - key: FRONTEND_ORIGINS
         value: https://iamdatagabs.github.io
       - key: MARKET_POLL_SECONDS
-        value: "15"
+        value: "1800"
