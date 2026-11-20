@@ -246,6 +246,109 @@ async def market_quotes(tickers: str = ",".join(DEFAULT_TICKERS)):
         "results": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol],
     }
 
+
+DASHBOARD_CACHE_SECONDS = 12 * 60 * 60
+
+
+class IntelligenceCache:
+    def __init__(self):
+        self.payload = None
+        self.expires_at = 0
+        self.lock = asyncio.Lock()
+
+    async def get(self):
+        if self.payload is not None and asyncio.get_running_loop().time() < self.expires_at:
+            return self.payload
+        async with self.lock:
+            if self.payload is not None and asyncio.get_running_loop().time() < self.expires_at:
+                return self.payload
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                fx_task = client.get(
+                    "https://api.frankfurter.dev/v1/latest",
+                    params={"base": "BRL", "symbols": "USD,EUR,JPY,GBP"},
+                )
+                ipca_task = client.get(
+                    "https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados/ultimos/1",
+                    params={"formato": "json"},
+                )
+                news_task = client.get(
+                    "https://api.gdeltproject.org/api/v2/doc/doc",
+                    params={
+                        "query": '(economia OR mercado OR inflação OR juros OR política) sourceCountry:BR sourcelang:por',
+                        "mode": "ArtList", "format": "json", "maxrecords": 6,
+                        "timespan": "12h", "sort": "DateDesc",
+                    },
+                )
+                results = await asyncio.gather(fx_task, ipca_task, news_task, return_exceptions=True)
+
+            exchange_rates = {"BRL": 1.0}
+            exchange_date = None
+            if not isinstance(results[0], Exception):
+                try:
+                    results[0].raise_for_status()
+                    fx = results[0].json()
+                    exchange_date = fx.get("date")
+                    # Frankfurter returns units of foreign currency per BRL; invert for BRL per unit.
+                    exchange_rates.update({
+                        code: round(1 / float(rate), 6)
+                        for code, rate in fx.get("rates", {}).items()
+                        if float(rate) > 0
+                    })
+                except (httpx.HTTPError, ValueError, TypeError, ZeroDivisionError):
+                    logger.warning("Não foi possível atualizar as taxas de câmbio.")
+
+            economic_indicator = None
+            if not isinstance(results[1], Exception):
+                try:
+                    results[1].raise_for_status()
+                    rows = results[1].json()
+                    if rows:
+                        economic_indicator = {
+                            "name": "IPCA mensal",
+                            "period": rows[-1].get("data"),
+                            "value": float(rows[-1].get("valor", "nan").replace(",", ".")),
+                        }
+                except (httpx.HTTPError, ValueError, TypeError):
+                    logger.warning("Não foi possível atualizar o IPCA do Banco Central.")
+
+            news = []
+            if not isinstance(results[2], Exception):
+                try:
+                    results[2].raise_for_status()
+                    payload = results[2].json()
+                    for article in payload.get("articles", [])[:6]:
+                        title = article.get("title")
+                        url = article.get("url")
+                        if title and url and url.startswith("http"):
+                            news.append({
+                                "title": title,
+                                "url": url,
+                                "source": article.get("domain") or article.get("source", {}).get("name") or "Notícia",
+                                "published_at": article.get("seendate", ""),
+                            })
+                except (httpx.HTTPError, ValueError, TypeError):
+                    logger.warning("Não foi possível atualizar o radar de notícias.")
+
+            self.payload = {
+                "updated_at": utc_now(),
+                "cache_ttl_hours": 12,
+                "exchange_date": exchange_date,
+                "exchange_rates": exchange_rates,
+                "economic_indicator": economic_indicator,
+                "news": news,
+            }
+            self.expires_at = asyncio.get_running_loop().time() + DASHBOARD_CACHE_SECONDS
+            return self.payload
+
+
+intelligence = IntelligenceCache()
+
+
+@app.get("/api/dashboard")
+async def dashboard_intelligence():
+    """Câmbio, IPCA e notícias agregados em cache por 12 horas."""
+    return await intelligence.get()
+
 @app.get("/api/market/stream")
 async def market_stream(request: Request):
     """Fluxo SSE: event: market\ndata: {...}\n\n. Reconexão gerenciada pelo EventSource."""
