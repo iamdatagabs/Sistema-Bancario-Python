@@ -9,7 +9,7 @@ Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. 
 - Dashboard responsivo com saldo, entradas, saídas, histórico e gráfico.
 - Depósitos e saques com validação no backend e valores monetários em centavos.
 - API REST FastAPI + SQLite.
-- Cotações de ativos brasileiros pela brapi.
+- Cotações de ativos brasileiros pela brapi.\n- Câmbio de BRL, USD, EUR, JPY e GBP por taxas de referência do Frankfurter.\n- Indicador mensal de inflação (IPCA/SGS) e radar de notícias de economia/política.\n- Cache de dados macroeconômicos e notícias por 12 horas.
 - Server-Sent Events (SSE), reconexão automática, cache do último snapshot e keep-alive.
 - Testes automatizados com pytest e pipeline GitHub Actions.
 
@@ -23,7 +23,7 @@ brapi ── polling periódico ──> FastAPI / MarketBroadcaster
                                 GitHub Pages
 ```
 
-SSE transporta os dados do servidor ao navegador. A cotação de origem depende da frequência, latência e limites do provedor: atualização quase em tempo real não significa feed tick-by-tick. O polling padrão é de 15 segundos (mínimo 10).
+SSE transporta os dados do servidor ao navegador. A cotação de origem depende da frequência, latência e limites do provedor: atualização quase em tempo real não significa feed tick-by-tick. O polling da brapi é de 30 minutos. O endpoint `/api/dashboard` agrega taxas de referência do Frankfurter, IPCA mensal do BCB/SGS e notícias via GDELT, mantendo o resultado em cache por 12 horas.
 
 ## Stack
 
@@ -102,7 +102,7 @@ O disco persistente configurado no Blueprint pode exigir plano pago do Render. S
 | GET | `/api/accounts/{id}` | Saldo e extrato |
 | POST | `/api/transactions` | Depósito ou saque |
 | GET | `/api/market/quotes` | Snapshot de cotações |
-| GET | `/api/market/stream` | Stream SSE |
+| GET | `/api/market/stream` | Stream SSE |\n| GET | `/api/dashboard` | Câmbio, IPCA e notícias (cache 12h) |
 
 Exemplo de transação:
 
