@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import sqlite3
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -27,11 +27,20 @@ def utc_now():
     return datetime.now(timezone.utc).isoformat()
 
 
+@contextmanager
 def connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=15)
     db.row_factory = sqlite3.Row
-    return db
+    db.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def initialize_database():
@@ -101,7 +110,7 @@ class MarketBroadcaster:
                 self.latest = await fetch_market_quotes(DEFAULT_TICKERS)
                 self.last_error = None
                 self.publish("market", self.latest)
-            except (httpx.HTTPError, ValueError, KeyError) as exc:
+            except Exception as exc:
                 self.last_error = str(exc)
                 self.publish("market_error", {"message": "Provedor de cotações temporariamente indisponível.",
                                               "requested_at": utc_now()})
