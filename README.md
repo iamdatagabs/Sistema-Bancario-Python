@@ -120,3 +120,7 @@ Exemplo de transação:
 ## Licença
 
 Consulte e preserve a licença aplicável ao código original antes de redistribuir.
+
+### Cotações e limites da brapi
+
+O backend consulta os seis ativos individualmente e mantém um snapshot em memória compartilhado pelo SSE e pelo endpoint `/api/market/quotes`. O intervalo mínimo está configurado em 30 minutos para respeitar o plano gratuito da brapi (1 ticker por chamada, até 15.000 requisições/mês e atualização aproximada de 30 minutos). Com seis ativos, a estimativa é de cerca de 8.640 chamadas/mês em operação contínua. Clientes SSE e chamadas ao endpoint de leitura reutilizam o cache e não geram novas consultas à brapi.
