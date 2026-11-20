@@ -20,7 +20,8 @@ BRAPI_BASE_URL = "https://brapi.dev/api"
 BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
 FRONTEND_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "*").split(",")]
 DEFAULT_TICKERS = ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "WEGE3"]
-MARKET_POLL_SECONDS = max(10, int(os.getenv("MARKET_POLL_SECONDS", "15")))
+# Plano gratuito: 1 ticker por chamada, atualização ~30 min. Seis ativos = ~8.640 chamadas/mês.
+MARKET_POLL_SECONDS = max(1800, int(os.getenv("MARKET_POLL_SECONDS", "1800")))
 
 
 def utc_now():
@@ -62,30 +63,39 @@ def initialize_database():
 
 
 async def fetch_market_quotes(symbols):
-    params = {"range": "1d", "interval": "1d"}
+    """Consulta cada ativo separadamente, compatível com o plano gratuito da brapi."""
+    headers = {"User-Agent": "NexusBanking/1.0"}
     if BRAPI_TOKEN:
-        params["token"] = BRAPI_TOKEN
-    async with httpx.AsyncClient(timeout=12) as client:
-        response = await client.get(f"{BRAPI_BASE_URL}/quote/{','.join(symbols)}", params=params,
-                                    headers={"User-Agent": "NexusBanking/1.0"})
-        response.raise_for_status()
-        payload = response.json()
-    quotes = []
-    for item in payload.get("results", []):
-        price = item.get("regularMarketPrice")
-        change = item.get("regularMarketChangePercent")
-        if price is None or change is None:
-            continue
-        quotes.append({
-            "symbol": item.get("symbol"),
-            "name": item.get("longName") or item.get("shortName") or item.get("symbol"),
-            "price": price,
-            "change_percent": change,
-            "market_state": item.get("marketState") or "Cotação disponível",
-            "market_time": item.get("regularMarketTime"),
-        })
-    return {"provider": "brapi", "requested_at": utc_now(), "results": quotes}
+        headers["Authorization"] = f"Bearer {BRAPI_TOKEN}"
 
+    quotes = []
+    errors = []
+    async with httpx.AsyncClient(timeout=12) as client:
+        for symbol in symbols:
+            try:
+                response = await client.get(f"{BRAPI_BASE_URL}/quote/{symbol}", headers=headers)
+                response.raise_for_status()
+                payload = response.json()
+                for result in payload.get("results", []):
+                    item = result.get("data") or result
+                    price = item.get("regularMarketPrice")
+                    change = item.get("regularMarketChangePercent")
+                    if price is None or change is None:
+                        continue
+                    quotes.append({
+                        "symbol": item.get("symbol") or symbol,
+                        "name": item.get("longName") or item.get("shortName") or symbol,
+                        "price": price,
+                        "change_percent": change,
+                        "market_state": item.get("marketState") or "Cotação disponível",
+                        "market_time": item.get("regularMarketTime"),
+                    })
+            except (httpx.HTTPError, ValueError) as exc:
+                errors.append(exc)
+
+    if not quotes and errors:
+        raise errors[0]
+    return {"provider": "brapi", "requested_at": utc_now(), "results": quotes}
 
 class MarketBroadcaster:
     """Uma consulta ao provedor alimenta todos os clientes SSE desta instância."""
@@ -218,16 +228,18 @@ def create_transaction(payload: TransactionInput):
 
 @app.get("/api/market/quotes")
 async def market_quotes(tickers: str = ",".join(DEFAULT_TICKERS)):
+    """Entrega o último snapshot em cache; nunca consulta a brapi por requisição de cliente."""
     symbols = [symbol.strip().upper() for symbol in tickers.split(",") if symbol.strip()]
     if not symbols or len(symbols) > 20 or any(not symbol.replace(".", "").isalnum() for symbol in symbols):
         raise HTTPException(status_code=400, detail="Informe entre 1 e 20 tickers válidos.")
-    try:
-        return await fetch_market_quotes(symbols)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Provedor respondeu com status {exc.response.status_code}.")
-    except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=502, detail="Não foi possível consultar o provedor de mercado.")
+    if market.latest is None:
+        raise HTTPException(status_code=503, detail="Cotações ainda não carregadas. Tente novamente em instantes.")
 
+    by_symbol = {item.get("symbol"): item for item in market.latest.get("results", [])}
+    return {
+        **market.latest,
+        "results": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol],
+    }
 
 @app.get("/api/market/stream")
 async def market_stream(request: Request):
