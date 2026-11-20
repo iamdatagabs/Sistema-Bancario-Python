@@ -1,29 +1,64 @@
 # Nexus Banking — Banking & Market Intelligence
 
-Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. A aplicação combina operações bancárias demonstrativas, API REST, persistência e integração com cotações do mercado financeiro brasileiro.
+Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. O projeto reúne operações bancárias demonstrativas, API REST, persistência local, streaming de cotações e um painel de inteligência de mercado com indicadores econômicos, câmbio e notícias.
 
-> Projeto educacional. Não é banco ou corretora, não movimenta dinheiro real e não oferece recomendação de investimento.
+> **Projeto educacional.** Não é uma instituição financeira ou corretora, não movimenta dinheiro real e não oferece recomendações de investimento.
+
+## Aplicação publicada
+
+- **Dashboard:** https://iamdatagabs.github.io/Sistema-Bancario-Python/
+- **Repositório:** https://github.com/iamdatagabs/Sistema-Bancario-Python
+- **API (Render):** https://nexus-banking-api-wip3.onrender.com
+- **Documentação interativa:** https://nexus-banking-api-wip3.onrender.com/docs
+
+O frontend é hospedado no GitHub Pages e consome a API hospedada no Render. A disponibilidade dos dados externos depende do backend e dos respectivos provedores.
 
 ## Funcionalidades
 
+### Banking
 - Dashboard responsivo com saldo, entradas, saídas, histórico e gráfico.
-- Depósitos e saques com validação no backend e valores monetários em centavos.
-- API REST FastAPI + SQLite.
-- Cotações de ativos brasileiros pela brapi.\n- Câmbio de BRL, USD, EUR, JPY e GBP por taxas de referência do Frankfurter.\n- Indicador mensal de inflação (IPCA/SGS) e radar de notícias de economia/política.\n- Cache de dados macroeconômicos e notícias por 12 horas.
-- Server-Sent Events (SSE), reconexão automática, cache do último snapshot e keep-alive.
-- Testes automatizados com pytest e pipeline GitHub Actions.
+- Depósitos e saques demonstrativos.
+- Validação das operações no backend e representação monetária em centavos.
+- Persistência de dados com SQLite.
+
+### Market & Intelligence
+- Cotações de seis ativos brasileiros: PETR4, VALE3, ITUB4, BBDC4, BBAS3 e WEGE3.
+- Atualização das cotações por polling no backend e distribuição aos navegadores via Server-Sent Events (SSE).
+- Reconexão automática, snapshot em cache e keep-alive do stream.
+- Painel de câmbio com BRL, USD, EUR, JPY e GBP, exibindo valores de referência em reais.
+- Indicador mensal de inflação (IPCA), consultado na série 433 do Sistema Gerenciador de Séries Temporais (SGS) do Banco Central.
+- Radar com notícias recentes de economia e política brasileira.
+- Cache de 12 horas para o conjunto de dados de câmbio, IPCA e notícias.
 
 ## Arquitetura
 
 ```text
-brapi ── polling periódico ──> FastAPI / MarketBroadcaster
-                                      │
-                               SSE / EventSource
-                                      │
-                                GitHub Pages
+                         ┌─────────────────────────┐
+                         │      GitHub Pages       │
+                         │ HTML · CSS · JavaScript │
+                         └────────────┬────────────┘
+                                      │ HTTPS / REST
+                                      │ EventSource (SSE)
+                         ┌────────────▼────────────┐
+                         │       FastAPI           │
+                         │       Render            │
+                         ├─────────────────────────┤
+                         │ Banking API · SQLite   │
+                         │ Market Broadcaster      │
+                         │ Dashboard Intelligence  │
+                         └──────┬──────────┬───────┘
+                                │          │
+                    ┌───────────┘          └───────────────┐
+                    ▼                                      ▼
+             ┌────────────┐                     ┌──────────────────┐
+             │   brapi    │                     │ Dados externos   │
+             │ Cotações   │                     │ Frankfurter      │
+             └────────────┘                     │ Banco Central    │
+                                                │ GDELT            │
+                                                └──────────────────┘
 ```
 
-SSE transporta os dados do servidor ao navegador. A cotação de origem depende da frequência, latência e limites do provedor: atualização quase em tempo real não significa feed tick-by-tick. O polling da brapi é de 30 minutos. O endpoint `/api/dashboard` agrega taxas de referência do Frankfurter, IPCA mensal do BCB/SGS e notícias via GDELT, mantendo o resultado em cache por 12 horas.
+O backend centraliza as consultas de mercado para os clientes conectados à mesma instância. O SSE distribui o snapshot ao navegador; não se trata de um feed tick-by-tick. O intervalo de polling da brapi deve respeitar os limites do plano contratado. A inteligência de câmbio, inflação e notícias é agregada por `GET /api/dashboard` e armazenada em cache por 12 horas.
 
 ## Stack
 
@@ -31,96 +66,140 @@ SSE transporta os dados do servidor ao navegador. A cotação de origem depende 
 |---|---|
 | Frontend | HTML, CSS, JavaScript |
 | Gráficos | Chart.js |
-| Backend | Python 3.12, FastAPI, Pydantic |
-| Streaming | Server-Sent Events |
+| Backend | Python, FastAPI, Pydantic |
+| Streaming | Server-Sent Events (SSE) |
 | Persistência | SQLite |
-| Mercado | brapi |
+| Cotações | brapi |
+| Câmbio | Frankfurter |
+| Indicador econômico | Banco Central do Brasil — SGS |
+| Notícias | GDELT |
 | Frontend hosting | GitHub Pages |
 | Backend hosting | Render |
-| Qualidade | pytest, GitHub Actions |
+| Testes e CI | pytest, GitHub Actions |
 
 ## Executar localmente
 
-Requer Python 3.11+.
+Requer Python 3.11 ou superior.
+
+1. Clone o repositório e entre na pasta do backend:
 
 ```bash
-cd backend
+git clone https://github.com/iamdatagabs/Sistema-Bancario-Python.git
+cd Sistema-Bancario-Python/backend
+```
+
+2. Crie e ative um ambiente virtual:
+
+```bash
 python -m venv .venv
-# Windows PowerShell: .venv\\Scripts\\Activate.ps1
-# macOS/Linux: source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+3. Instale as dependências e inicie a API:
+
+```bash
 pip install -r requirements-dev.txt
 uvicorn main:app --reload
 ```
 
-Em outro terminal, sirva a raiz do projeto com Live Server ou outro servidor estático. O `config.js` já usa `http://localhost:8000` automaticamente quando acessado em localhost.
+4. Em outro terminal, na raiz do repositório, sirva os arquivos estáticos com Live Server ou outro servidor HTTP local.
+
+Endereços locais:
 
 - API: http://localhost:8000
 - Swagger: http://localhost:8000/docs
-- Health: http://localhost:8000/health
-- SSE: http://localhost:8000/api/market/stream
+- Health check: http://localhost:8000/health
+- Stream SSE: http://localhost:8000/api/market/stream
+
+O `config.js` seleciona a URL local da API quando o frontend é aberto em localhost.
 
 ## Testes
 
+Na pasta `backend`:
+
 ```bash
-cd backend
 pip install -r requirements-dev.txt
 pytest -q
 ```
 
-Os testes cobrem inicialização de conta, depósitos, saques, saldo insuficiente, tipos inválidos, conta inexistente, validação de tickers e broadcast SSE. O workflow em `.github/workflows/ci.yml` executa os testes em pushes e pull requests para `main`.
+A suíte automatizada cobre operações bancárias, validações, consulta de ativos, streaming SSE e cache do painel de inteligência. O workflow em `.github/workflows/ci.yml` executa os testes em pushes e pull requests para a branch principal.
 
-## Configuração da brapi
+## Configuração
 
-O backend lê `BRAPI_TOKEN` por variável de ambiente. Se seu plano da brapi exigir token, configure-o no Render. **Nunca coloque tokens no frontend ou no repositório.**
+O backend utiliza variáveis de ambiente para parâmetros de execução:
 
-`MARKET_POLL_SECONDS` define o intervalo de consulta (padrão 15 segundos). Uma consulta alimenta todos os clientes conectados à mesma instância.
+| Variável | Finalidade |
+|---|---|
+| `BRAPI_TOKEN` | Token privado da brapi, quando exigido pelo plano |
+| `FRONTEND_ORIGINS` | Origens autorizadas pelo CORS, incluindo a origem do GitHub Pages |
+| `MARKET_POLL_SECONDS` | Intervalo, em segundos, entre consultas de cotações |
+
+Nunca inclua tokens ou credenciais no frontend, no README ou no controle de versão. Cadastre segredos diretamente nas variáveis de ambiente do serviço de backend.
+
+A frequência de consulta à brapi deve observar os limites do provedor. Para a implantação com plano gratuito, o intervalo foi configurado em **1.800 segundos (30 minutos)**. O cache do painel de câmbio, IPCA e notícias tem validade de **12 horas**.
 
 ## Deploy
 
 ### Backend — Render
 
-O `render.yaml` descreve o serviço FastAPI, health check e disco persistente para o SQLite. Crie o serviço a partir do Blueprint e configure:
+O serviço FastAPI é hospedado no Render. Configure as variáveis de ambiente indicadas acima e defina o health check como `/health`. A URL pública da API utilizada pelo frontend é:
 
-- `BRAPI_TOKEN`: token privado da brapi, se necessário.
-- `FRONTEND_ORIGINS`: origem exata do GitHub Pages, por exemplo `https://iamdatagabs.github.io`.
-- `MARKET_POLL_SECONDS`: intervalo desejado, respeitando limites do provedor.
+`https://nexus-banking-api-wip3.onrender.com`
 
-O disco persistente configurado no Blueprint pode exigir plano pago do Render. Sem disco persistente, SQLite em filesystem efêmero perde os dados quando a instância reinicia.
+O projeto utiliza SQLite. Se o serviço estiver em filesystem efêmero, os dados locais podem ser perdidos em reinicializações ou novos deploys; armazenamento persistente depende da configuração e do plano do serviço.
 
 ### Frontend — GitHub Pages
 
-1. Publique a branch `main` em **Settings → Pages → Deploy from a branch → /(root)**.
-2. Edite `config.js` e defina `window.NEXUS_API_URL` com a URL HTTPS do backend no Render.
-3. Configure `FRONTEND_ORIGINS` no Render com a origem do GitHub Pages.
-4. Aguarde a publicação e teste a API e o dashboard.
+O frontend está publicado em:
 
-## Endpoints
+https://iamdatagabs.github.io/Sistema-Bancario-Python/
+
+A publicação é automatizada pelo GitHub Actions. Para uma nova instalação, habilite GitHub Pages nas configurações do repositório e configure a URL pública da API em `config.js`. No Render, autorize a origem do GitHub Pages em `FRONTEND_ORIGINS`.
+
+## Endpoints da API
 
 | Método | Rota | Descrição |
 |---|---|---|
 | GET | `/health` | Health check |
-| GET | `/api/accounts/{id}` | Saldo e extrato |
+| GET | `/api/accounts/{id}` | Saldo e extrato da conta |
 | POST | `/api/transactions` | Depósito ou saque |
 | GET | `/api/market/quotes` | Snapshot de cotações |
-| GET | `/api/market/stream` | Stream SSE |\n| GET | `/api/dashboard` | Câmbio, IPCA e notícias (cache 12h) |
+| GET | `/api/market/stream` | Stream de cotações via SSE |
+| GET | `/api/dashboard` | Câmbio, IPCA e notícias (cache de 12 horas) |
 
-Exemplo de transação:
+Exemplo de transação demonstrativa:
 
 ```json
-{"account_id":"demo","type":"deposit","amount":250.00,"description":"Aporte demonstrativo"}
+{
+  "account_id": "demo",
+  "type": "deposit",
+  "amount": 250.00,
+  "description": "Aporte demonstrativo"
+}
 ```
 
-## Limitações e evolução
+## Limitações e próximos passos
 
-- O broadcaster/cache SSE é local à instância. Para escalar horizontalmente, usar Redis Pub/Sub.
-- SQLite é adequado ao protótipo; PostgreSQL + Alembic é o próximo passo para maior concorrência.
-- O sistema ainda não implementa autenticação, autorização por usuário, transferências ou dinheiro real.
-- Próximos incrementos: JWT, PostgreSQL, carteira de investimentos, séries históricas, observabilidade, rate limiting e auditoria.
+- O broadcaster e o cache SSE são locais à instância; escalabilidade horizontal exigiria um mecanismo compartilhado, como Redis Pub/Sub.
+- SQLite atende ao protótipo; PostgreSQL e migrações com Alembic são caminhos para maior concorrência e evolução do esquema.
+- O projeto não implementa autenticação, autorização por usuário, transferências entre contas ou movimentação de dinheiro real.
+- Cotações e indicadores dependem da disponibilidade, atualização e limites das APIs externas.
+- O cache em memória é reiniciado quando o processo do backend reinicia ou recebe um novo deploy.
+
+Possíveis evoluções incluem autenticação JWT, PostgreSQL, carteira de investimentos, séries históricas, observabilidade, rate limiting e trilha de auditoria.
+
+## Fontes de dados
+
+- [brapi](https://brapi.dev/) — cotações de ativos brasileiros.
+- [Frankfurter](https://www.frankfurter.dev/) — taxas de câmbio de referência.
+- [Banco Central do Brasil — SGS](https://www3.bcb.gov.br/sgspub/) — série mensal do IPCA.
+- [GDELT](https://www.gdeltproject.org/) — monitoramento de notícias.
 
 ## Licença
 
-Consulte e preserve a licença aplicável ao código original antes de redistribuir.
-
-### Cotações e limites da brapi
-
-O backend consulta os seis ativos individualmente e mantém um snapshot em memória compartilhado pelo SSE e pelo endpoint `/api/market/quotes`. O intervalo mínimo está configurado em 30 minutos para respeitar o plano gratuito da brapi (1 ticker por chamada, até 15.000 requisições/mês e atualização aproximada de 30 minutos). Com seis ativos, a estimativa é de cerca de 8.640 chamadas/mês em operação contínua. Clientes SSE e chamadas ao endpoint de leitura reutilizam o cache e não geram novas consultas à brapi.
+Consulte e preserve a licença aplicável ao código original antes de redistribuir o projeto.
