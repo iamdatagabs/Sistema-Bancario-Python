@@ -128,3 +128,23 @@ def test_market_broadcaster_delivers_latest_event():
         assert queue not in broadcaster.subscribers
 
     asyncio.run(exercise())
+
+def test_dashboard_intelligence_uses_cached_payload(client, monkeypatch):
+    payload = {
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "cache_ttl_hours": 12,
+        "exchange_date": "2026-01-01",
+        "exchange_rates": {"BRL": 1, "USD": 5.5, "EUR": 6.0, "JPY": 0.04, "GBP": 7.0},
+        "economic_indicator": {"name": "IPCA mensal", "period": "12/2025", "value": 0.3},
+        "news": [],
+    }
+
+    async def cached_payload():
+        return payload
+
+    monkeypatch.setattr(main.intelligence, "get", cached_payload)
+    response = client.get("/api/dashboard")
+    assert response.status_code == 200
+    assert response.json()["exchange_rates"]["USD"] == 5.5
+    assert response.json()["cache_ttl_hours"] == 12
+
