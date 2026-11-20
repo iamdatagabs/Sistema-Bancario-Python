@@ -109,15 +109,17 @@ def test_market_quotes_rejects_invalid_symbols(client):
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
-async def test_market_broadcaster_delivers_latest_event():
-    broadcaster = main.MarketBroadcaster()
-    queue = await broadcaster.subscribe()
-    payload = {"results": [{"symbol": "PETR4", "price": 35.0}]}
+def test_market_broadcaster_delivers_latest_event():
+    async def exercise():
+        broadcaster = main.MarketBroadcaster()
+        queue = await broadcaster.subscribe()
+        payload = {"results": [{"symbol": "PETR4", "price": 35.0}]}
 
-    broadcaster.publish("market", payload)
+        broadcaster.publish("market", payload)
 
-    message = await queue.get()
-    assert message == {"event": "market", "data": payload}
-    broadcaster.unsubscribe(queue)
-    assert queue not in broadcaster.subscribers
+        message = await queue.get()
+        assert message == {"event": "market", "data": payload}
+        broadcaster.unsubscribe(queue)
+        assert queue not in broadcaster.subscribers
+
+    asyncio.run(exercise())
