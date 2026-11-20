@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: nexus-banking-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: BRAPI_TOKEN
+        sync: false
+      - key: FRONTEND_ORIGINS
+        value: "*"
+      - key: DATABASE_PATH
+        value: /var/data/nexus.db
+      - key: MARKET_POLL_SECONDS
+        value: "15"
+    disk:
+      name: nexus-data
+      mountPath: /var/data
+      sizeGB: 1
