@@ -107,6 +107,8 @@ def test_market_quotes_endpoint_returns_cached_provider_data(client):
 def test_market_quotes_returns_503_before_first_snapshot(client):
     response = client.get("/api/market/quotes")
     assert response.status_code == 503
+
+
 def test_market_quotes_rejects_invalid_symbols(client):
     response = client.get("/api/market/quotes?tickers=PETR4,%3Cscript%3E")
     assert response.status_code == 400
