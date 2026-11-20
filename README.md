@@ -1,31 +1,29 @@
 # Nexus Banking — Banking & Market Intelligence
 
-Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. O projeto evolui depósito, saque e extrato para uma aplicação web com API REST, persistência e integração com cotações do mercado financeiro brasileiro.
+Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. A aplicação combina operações bancárias demonstrativas, API REST, persistência e integração com cotações do mercado financeiro brasileiro.
 
-> Projeto educacional e demonstrativo. Não é banco ou corretora, não movimenta dinheiro real e não oferece recomendação de investimento.
+> Projeto educacional. Não é banco ou corretora, não movimenta dinheiro real e não oferece recomendação de investimento.
 
 ## Funcionalidades
 
-- Dashboard bancário com saldo, entradas, saídas e histórico.
-- Depósitos e saques com validação no backend.
-- API REST com FastAPI e persistência SQLite.
+- Dashboard responsivo com saldo, entradas, saídas, histórico e gráfico.
+- Depósitos e saques com validação no backend e valores monetários em centavos.
+- API REST FastAPI + SQLite.
 - Cotações de ativos brasileiros pela brapi.
-- Streaming de cotações via **Server-Sent Events (SSE)**.
-- Uma consulta periódica do backend ao provedor alimenta todos os clientes conectados nesta instância.
-- Reconexão automática do EventSource, eventos de erro e keep-alive.
-- Frontend estático compatível com GitHub Pages.
+- Server-Sent Events (SSE), reconexão automática, cache do último snapshot e keep-alive.
+- Testes automatizados com pytest e pipeline GitHub Actions.
 
 ## Arquitetura
 
 ```text
-brapi ──polling (15s)──> FastAPI / MarketBroadcaster
-                              │
-                       SSE / EventSource
-                              │
-                         GitHub Pages
+brapi ── polling periódico ──> FastAPI / MarketBroadcaster
+                                      │
+                               SSE / EventSource
+                                      │
+                                GitHub Pages
 ```
 
-SSE é adequado para fluxo unidirecional servidor → navegador. Operações bancárias continuam usando HTTP REST. A atualização visual pode ser quase em tempo real, mas a cotação de origem depende da frequência, latência e limites da brapi. Não é feed tick-by-tick.
+SSE transporta os dados do servidor ao navegador. A cotação de origem depende da frequência, latência e limites do provedor: atualização quase em tempo real não significa feed tick-by-tick. O polling padrão é de 15 segundos (mínimo 10).
 
 ## Stack
 
@@ -33,12 +31,13 @@ SSE é adequado para fluxo unidirecional servidor → navegador. Operações ban
 |---|---|
 | Frontend | HTML, CSS, JavaScript |
 | Gráficos | Chart.js |
-| Backend | Python, FastAPI, Pydantic |
-| Streaming | Server-Sent Events (SSE) |
+| Backend | Python 3.12, FastAPI, Pydantic |
+| Streaming | Server-Sent Events |
 | Persistência | SQLite |
 | Mercado | brapi |
 | Frontend hosting | GitHub Pages |
 | Backend hosting | Render |
+| Qualidade | pytest, GitHub Actions |
 
 ## Executar localmente
 
@@ -49,51 +48,59 @@ cd backend
 python -m venv .venv
 # Windows PowerShell: .venv\\Scripts\\Activate.ps1
 # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn main:app --reload
 ```
 
-API: http://localhost:8000  
-Documentação: http://localhost:8000/docs  
-Health check: http://localhost:8000/health  
-Stream SSE: http://localhost:8000/api/market/stream
+Em outro terminal, sirva a raiz do projeto com Live Server ou outro servidor estático. O `config.js` já usa `http://localhost:8000` automaticamente quando acessado em localhost.
 
-Abra a raiz do projeto com Live Server ou outro servidor estático. Para apontar o frontend a outro backend, defina antes de carregar `app.js`:
+- API: http://localhost:8000
+- Swagger: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+- SSE: http://localhost:8000/api/market/stream
 
-```html
-<script>window.NEXUS_API_URL = "https://sua-api.onrender.com";</script>
-<script src="app.js"></script>
+## Testes
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest -q
 ```
 
-## Integração brapi
+Os testes cobrem inicialização de conta, depósitos, saques, saldo insuficiente, tipos inválidos, conta inexistente, validação de tickers e broadcast SSE. O workflow em `.github/workflows/ci.yml` executa os testes em pushes e pull requests para `main`.
 
-O backend lê `BRAPI_TOKEN` da variável de ambiente. Configure-a no ambiente de deploy se seu plano exigir token. Nunca exponha a credencial no JavaScript ou no GitHub Pages.
+## Configuração da brapi
 
-`MARKET_POLL_SECONDS` controla a periodicidade de consulta do backend (mínimo de 10 segundos; padrão 15). Todos os navegadores recebem o último snapshot pelo SSE. Keep-alive é enviado a cada 20 segundos sem atualização.
+O backend lê `BRAPI_TOKEN` por variável de ambiente. Se seu plano da brapi exigir token, configure-o no Render. **Nunca coloque tokens no frontend ou no repositório.**
+
+`MARKET_POLL_SECONDS` define o intervalo de consulta (padrão 15 segundos). Uma consulta alimenta todos os clientes conectados à mesma instância.
 
 ## Deploy
 
 ### Backend — Render
 
-O `render.yaml` configura o serviço, health check e disco persistente para SQLite. Crie um Web Service conectado ao repositório e configure `BRAPI_TOKEN`, se necessário. Após deploy, valide `/health` e `/api/market/stream`.
+O `render.yaml` descreve o serviço FastAPI, health check e disco persistente para o SQLite. Crie o serviço a partir do Blueprint e configure:
 
-Para este projeto educacional, o broadcaster mantém cache e conexões na memória de uma instância. Não habilite múltiplas instâncias sem mover o cache/pub-sub para Redis ou outro broker compartilhado. Para concorrência maior, migre SQLite para PostgreSQL.
+- `BRAPI_TOKEN`: token privado da brapi, se necessário.
+- `FRONTEND_ORIGINS`: origem exata do GitHub Pages, por exemplo `https://iamdatagabs.github.io`.
+- `MARKET_POLL_SECONDS`: intervalo desejado, respeitando limites do provedor.
+
+O disco persistente configurado no Blueprint pode exigir plano pago do Render. Sem disco persistente, SQLite em filesystem efêmero perde os dados quando a instância reinicia.
 
 ### Frontend — GitHub Pages
 
-1. Abra **Settings → Pages** no repositório.
-2. Selecione **Deploy from a branch**, branch `main`, pasta `/ (root)`.
-3. Defina `window.NEXUS_API_URL` no HTML com a URL HTTPS do backend publicado.
-4. Configure `FRONTEND_ORIGINS` no backend com a origem do GitHub Pages para restringir CORS.
-5. Publique e teste o dashboard.
+1. Publique a branch `main` em **Settings → Pages → Deploy from a branch → /(root)**.
+2. Edite `config.js` e defina `window.NEXUS_API_URL` com a URL HTTPS do backend no Render.
+3. Configure `FRONTEND_ORIGINS` no Render com a origem do GitHub Pages.
+4. Aguarde a publicação e teste a API e o dashboard.
 
 ## Endpoints
 
-| Método | Rota | Finalidade |
+| Método | Rota | Descrição |
 |---|---|---|
-| GET | `/health` | Saúde da API |
+| GET | `/health` | Health check |
 | GET | `/api/accounts/{id}` | Saldo e extrato |
-| POST | `/api/transactions` | Depósito/saque |
+| POST | `/api/transactions` | Depósito ou saque |
 | GET | `/api/market/quotes` | Snapshot de cotações |
 | GET | `/api/market/stream` | Stream SSE |
 
@@ -103,16 +110,13 @@ Exemplo de transação:
 {"account_id":"demo","type":"deposit","amount":250.00,"description":"Aporte demonstrativo"}
 ```
 
-## Próximas evoluções
+## Limitações e evolução
 
-- Testes automatizados (pytest + TestClient) e CI.
-- Autenticação JWT e autorização por conta.
-- PostgreSQL + Alembic.
-- Transferências entre contas e limites.
-- Carteira de investimentos e séries históricas.
-- Redis Pub/Sub para múltiplas instâncias.
-- Observabilidade, rate limiting e auditoria.
+- O broadcaster/cache SSE é local à instância. Para escalar horizontalmente, usar Redis Pub/Sub.
+- SQLite é adequado ao protótipo; PostgreSQL + Alembic é o próximo passo para maior concorrência.
+- O sistema ainda não implementa autenticação, autorização por usuário, transferências ou dinheiro real.
+- Próximos incrementos: JWT, PostgreSQL, carteira de investimentos, séries históricas, observabilidade, rate limiting e auditoria.
 
 ## Licença
 
-Verifique e preserve a licença aplicável ao código original antes de redistribuir.
+Consulte e preserve a licença aplicável ao código original antes de redistribuir.
