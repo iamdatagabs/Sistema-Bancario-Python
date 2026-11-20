@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager, suppress
@@ -16,6 +17,8 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "nexus.db"))
+logger = logging.getLogger("nexus.market")
+
 BRAPI_BASE_URL = "https://brapi.dev/api"
 BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
 FRONTEND_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "*").split(",")]
@@ -119,9 +122,11 @@ class MarketBroadcaster:
             try:
                 self.latest = await fetch_market_quotes(DEFAULT_TICKERS)
                 self.last_error = None
+                logger.info("Snapshot brapi atualizado: %s/%s ativos.", len(self.latest["results"]), len(DEFAULT_TICKERS))
                 self.publish("market", self.latest)
             except Exception as exc:
                 self.last_error = str(exc)
+                logger.warning("Falha ao atualizar snapshot brapi (%s).", type(exc).__name__)
                 self.publish("market_error", {"message": "Provedor de cotações temporariamente indisponível.",
                                               "requested_at": utc_now()})
             await asyncio.sleep(MARKET_POLL_SECONDS)
