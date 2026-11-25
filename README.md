@@ -4,7 +4,7 @@ Releitura full-stack do desafio original **Sistema Bancário em Python (DIO)**. 
 
 > **Projeto educacional.** Não é uma instituição financeira ou corretora, não movimenta dinheiro real e não oferece recomendações de investimento.
 
-## Aplicação publicada
+**Portfólio:** https://iamdatagabs.github.io/iamdatagabs/portfolio/\n\n## Aplicação publicada
 
 - **Dashboard:** https://iamdatagabs.github.io/Sistema-Bancario-Python/
 - **Repositório:** https://github.com/iamdatagabs/Sistema-Bancario-Python
